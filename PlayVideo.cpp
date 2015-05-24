@@ -1,5 +1,6 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/features2d/features2d.hpp>
 #include <iostream>
 
 using namespace cv;
@@ -10,14 +11,26 @@ using namespace std;
 #define THRESH_BINARY_INVERT 1
 const char* WIN_ORIGINAL = "original";
 const char* WIN_CALCULATE = "calculate";
+const int erosion_size = 1;
 
 
 int main()
 {
     VideoCapture stream0("rpi_record.mp4");
-    Mat img, img_hsv, img_threshold;
+    Mat img_src, img_hsv, img_erosion;
 	vector<Mat> channels(3);
-   
+    vector<KeyPoint> key_points;
+	cv::SimpleBlobDetector::Params blob_detect_params;
+	
+	blob_detect_params.filterByArea = true;
+	blob_detect_params.minArea = 1500;
+	blob_detect_params.filterByCircularity = false;
+	blob_detect_params.filterByConvexity = false;
+	blob_detect_params.minDistBetweenBlobs = 50.0f;
+	
+	Ptr<SimpleBlobDetector> blob_detector = 
+	                   SimpleBlobDetector::create(blob_detect_params);
+	   
 	if(!stream0.isOpened())
 	{
 		cout << "Cannot open video stream!" << endl ;
@@ -54,16 +67,19 @@ int main()
     cvCreateTrackbar("LowV", WIN_CALCULATE, &iLowV, 255);
     cvCreateTrackbar("HighV", WIN_CALCULATE, &iHighV, 255);
 
+    Mat erosion_element = getStructuringElement(MORPH_RECT,
+	                       Size(2*erosion_size+1, 2*erosion_size+1),
+						   Point(erosion_size, erosion_size));
     while(true)
 	{
-		bool bSuccess = stream0.read(img);
+		bool bSuccess = stream0.read(img_src);
 		if(!bSuccess)
 		{
             cout << "play video done" << endl;
 			break;
 	    }
 
-		cvtColor(img, img_hsv, CV_BGR2HSV);
+		cvtColor(img_src, img_hsv, CV_BGR2HSV);
         
 		split(img_hsv, channels);
 		
@@ -73,13 +89,20 @@ int main()
 		                 Scalar(iHighH, iHighS, iHighV), 
 						 img_threshold);
         
-		imshow(WIN_CALCULATE, img_threshold);
-		imshow(WIN_ORIGINAL, img);
+		erode(img_threshold, img_erosion, erosion_element);
 
-		if(waitKey(30) >= 0)
+        blob_detector->detect(img_erosion, key_points);
+		drawKeypoints(img_erosion, key_points, img_erosion, Scalar(0,0,255), 
+		              DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+		imshow(WIN_CALCULATE, img_erosion);
+		imshow(WIN_ORIGINAL, img_src);
+
+		if(waitKey(0) >= 0)
 		{
-			break;
+			continue;
 		}
-	}
+    }
+
 	return 0;
 }
